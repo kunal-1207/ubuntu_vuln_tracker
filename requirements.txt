@@ -1,2 +1,4 @@
 requests==2.31.0
 rich==13.7.1
+packaging==23.2
+pytest==8.0.0

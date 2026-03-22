@@ -25,10 +25,19 @@ class CVEFetcher:
             json.dump(data, f)
             
     def fetch_usn_data(self, limit=100):
+        """
+        Fetches vulnerability data. Uses cache if valid and sufficient.
+        """
+        cached_data = None
         if self._is_cache_valid():
-            return self._load_cache()
+            cached_data = self._load_cache()
+            # If we have enough notices in cache, return them
+            if cached_data and len(cached_data.get('notices', [])) >= limit:
+                # Return only the requested number of notices
+                cached_data['notices'] = cached_data['notices'][:limit]
+                return cached_data
             
-        print("[*] Fetching latest Ubuntu Security Notices...")
+        print(f"[*] Fetching latest {limit} Ubuntu Security Notices...")
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
             response = requests.get(f"{self.usn_url}?limit={limit}", headers=headers)
@@ -37,6 +46,9 @@ class CVEFetcher:
             self._save_cache(data)
             return data
         except Exception as e:
+            if cached_data:
+                print(f"[!] Error fetching USN data ({e}). Using stale cache.")
+                return cached_data
             print(f"[!] Error fetching USN data: {e}")
             return None
 

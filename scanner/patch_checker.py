@@ -1,5 +1,9 @@
 import subprocess
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+try:
+    from packaging import version
+except ImportError:
+    version = None
 
 class PatchChecker:
     def __init__(self):
@@ -14,16 +18,33 @@ class PatchChecker:
             # dpkg --compare-versions 1.0 lt 2.0 -> returns 0 if true
             result = subprocess.run(
                 ["dpkg", "--compare-versions", installed_ver, "lt", fixed_ver],
-                capture_output=True, check=False
+                capture_output=True, check=False, timeout=5
             )
             return result.returncode == 0
-        except FileNotFoundError:
-            # Fallback for non-Debian systems (very basic/naive string compare for demo)
-            return installed_ver < fixed_ver
+        except (FileNotFoundError, subprocess.SubprocessError):
+            # Fallback for non-Debian systems
+            if version:
+                try:
+                    return version.parse(installed_ver) < version.parse(fixed_ver)
+                except Exception:
+                    pass
+            
+            # Final fallback: very basic/naive string split and compare
+            return self._naive_compare(installed_ver, fixed_ver)
 
-    def check_system(self, installed_packages: Dict[str, str], vulnerability_mapping: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    def _naive_compare(self, v1: str, v2: str) -> bool:
+        """Extremely basic numeric-aware comparison if everything else fails."""
+        def split_ver(v):
+            return [int(x) if x.isdigit() else x for x in v.replace('-', '.').split('.')]
+        try:
+            return split_ver(v1) < split_ver(v2)
+        except Exception:
+            return v1 < v2
+
+    def check_system(self, installed_packages: Dict[str, str], vulnerability_mapping: Dict[str, List[Dict[str, Any]]], release: str = None) -> List[Dict[str, Any]]:
         """
         Cross-references installed packages against the vulnerability mapping.
+        Filters by release if provided.
         """
         findings: List[Dict[str, Any]] = []
         
@@ -31,6 +52,10 @@ class PatchChecker:
             if pkg_name in vulnerability_mapping:
                 vulns = vulnerability_mapping[pkg_name]
                 for vuln in vulns:
+                    # Filter by release if specified
+                    if release and vuln.get('release') != release:
+                        continue
+                        
                     fixed_version = vuln['fixed_version']
                     usn_id = vuln['usn_id']
                     
@@ -42,7 +67,7 @@ class PatchChecker:
                             "fixed_version": fixed_version,
                             "usn_id": usn_id,
                             "cves": vuln['cves'],
-                            "release": vuln['release']
+                            "release": vuln.get('release')
                         })
                         
         return findings

@@ -19,7 +19,7 @@ class PackageMapper:
         }
         """
         mapping: Dict[str, List[Dict[str, Any]]] = {}
-        if not self.usn_data or 'notices' not in self.usn_data:
+        if not self.usn_data or not isinstance(self.usn_data.get('notices'), list):
             return mapping
             
         for notice in self.usn_data['notices']:
